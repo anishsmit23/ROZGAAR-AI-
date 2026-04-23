@@ -1,27 +1,29 @@
-"""Resume tailoring agent that aligns resume language with target JD."""
-
-from __future__ import annotations
-
-from pathlib import Path
-
-from config.prompts import RESUME_TAILOR_PROMPT
-from config import settings as app_settings
-from tools.file_io_tool import write_text
-from tools.pdf_tool import extract_pdf_text, generate_resume_pdf
-
-
 def run_resume_tailor_agent(state: dict) -> dict:
-    """Generate a tailored resume draft and persist TXT + PDF outputs."""
-
     settings = app_settings.get_settings()
     base_resume_path = settings.base_resume_path
     job_description = state.get("job_description", "")
 
-    source_text = extract_pdf_text(base_resume_path) if base_resume_path.exists() else state.get("base_resume", "")
+    source_text = (
+        extract_pdf_text(base_resume_path)
+        if base_resume_path.exists()
+        else state.get("base_resume", "")
+    )
+
+    # ← NEW: inject judge feedback if this is a retry
+    judge_feedback = state.get("judge_feedback", [])
+    feedback_block = ""
+    if judge_feedback:
+        feedback_lines = "\n".join(f"- {s}" for s in judge_feedback)
+        feedback_block = (
+            f"\n\nPrevious evaluation found these issues — fix them specifically:\n"
+            f"{feedback_lines}\n"
+        )
+
     prompt = (
         f"{RESUME_TAILOR_PROMPT}\n\n"
         f"Base Resume:\n{source_text}\n\n"
-        f"Job Description:\n{job_description}\n\n"
+        f"Job Description:\n{job_description}"
+        f"{feedback_block}\n\n"
         "Return concise tailored bullet points only."
     )
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from Agents.email_writer_agent import run_email_writer_agent
 from Agents.evaluator_agent import run_evaluator_agent
@@ -14,13 +16,12 @@ from Agents.resume_tailor_agent import run_resume_tailor_agent
 
 
 class AgentState(TypedDict, total=False):
-    """State container passed through every graph node."""
-
     task: Literal["job_search", "tailor_resume", "write_email", "interview_prep"]
     retry_count: int
     max_retries: int
     needs_retry: bool
     evaluation_target: Literal["resume", "email"]
+    judge_feedback: list[str]          # ← NEW: carries suggestions from judge back to tailor
 
     job_search: dict
     jobs: list[dict]
@@ -55,23 +56,15 @@ def _route_from_start(state: AgentState) -> str:
     return "job_scraper"
 
 
-def _route_resume_to_eval(_: AgentState) -> str:
-    return "evaluator"
-
-
-def _route_email_to_eval(_: AgentState) -> str:
-    return "evaluator"
-
-
 def _route_after_evaluation(state: AgentState) -> str:
+    """Pure routing — reads state only, never mutates it."""
     if not state.get("needs_retry", False):
         return END
 
-    retry_count = int(state.get("retry_count", 0)) + 1
-    state["retry_count"] = retry_count
+    retry_count = int(state.get("retry_count", 0))
     max_retries = int(state.get("max_retries", 2))
 
-    if retry_count > max_retries:
+    if retry_count >= max_retries:
         return END
 
     if state.get("evaluation_target") == "email":
@@ -79,9 +72,12 @@ def _route_after_evaluation(state: AgentState) -> str:
     return "resume_tailor"
 
 
-def build_graph():
-    """Construct and compile the LangGraph state machine."""
+# ← NEW: separate node that increments retry_count (routing functions can't mutate state)
+def _increment_retry(state: AgentState) -> dict:
+    return {"retry_count": int(state.get("retry_count", 0)) + 1}
 
+
+def build_graph():
     graph = StateGraph(AgentState)
 
     graph.add_node("job_scraper", run_job_scraper_agent)
@@ -89,21 +85,25 @@ def build_graph():
     graph.add_node("email_writer", run_email_writer_agent)
     graph.add_node("interview_prep_agent", run_interview_prep_agent)
     graph.add_node("evaluator", run_evaluator_agent)
+    graph.add_node("increment_retry", _increment_retry)   # ← NEW node
 
     graph.add_conditional_edges(START, _route_from_start)
 
     graph.add_edge("job_scraper", END)
-    graph.add_conditional_edges("resume_tailor", _route_resume_to_eval)
-    graph.add_conditional_edges("email_writer", _route_email_to_eval)
+    graph.add_edge("resume_tailor", "evaluator")
+    graph.add_edge("email_writer", "evaluator")
     graph.add_edge("interview_prep_agent", END)
 
     graph.add_conditional_edges("evaluator", _route_after_evaluation)
+    # When routing back to tailor/email, go through increment_retry first
+    graph.add_edge("increment_retry", "resume_tailor")
 
     return graph.compile()
 
 
-def run_orchestrator(initial_state: AgentState) -> AgentState:
-    """Execute the workflow graph and return final state."""
+# Compile once at module load — not on every request
+_COMPILED_GRAPH = build_graph()
 
-    app = build_graph()
-    return app.invoke(initial_state)
+
+def run_orchestrator(initial_state: AgentState) -> AgentState:
+    return _COMPILED_GRAPH.invoke(initial_state)
