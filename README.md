@@ -1,5 +1,8 @@
 # Autonomous AI Job Search Agent
 
+
+UNDER CONSTRUCTION 🚧 
+
 Production-minded scaffold for a multi-agent job search system using LangGraph, FastAPI, Streamlit, ChromaDB, and SQLite.
 
 ## Features
