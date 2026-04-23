@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from hashlib import md5
+from pathlib import Path
 
 from config.prompts import EMAIL_WRITER_PROMPT
 from config import settings as app_settings
@@ -44,8 +45,10 @@ def run_email_writer_agent(state: dict) -> dict:
         to_email=state.get("to_email"),
     )
 
+    out = state.get("email_output_path")
+    path = Path(out) if out else Path("data/outputs/email_draft.txt")
     output_path = write_text(
-        file_path=state.get("email_output_path") or __import__("pathlib").Path("data/outputs/email_draft.txt"),
+        path,
         content=f"Subject: {draft.subject}\n\n{draft.body}",
     )
 

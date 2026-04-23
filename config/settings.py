@@ -12,6 +12,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from exceptions import ConfigurationError
 
+# Groq exposes an OpenAI-compatible Chat Completions API.
+DEFAULT_GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+
 
 class Settings(BaseSettings):
     """Environment-backed application settings."""
@@ -21,7 +24,8 @@ class Settings(BaseSettings):
     app_env: str = Field(default="development", alias="APP_ENV")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
-    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
+    groq_base_url: str = Field(default=DEFAULT_GROQ_BASE_URL, alias="GROQ_BASE_URL")
     serpapi_key: str = Field(default="", alias="SERPAPI_KEY")
 
     smtp_host: str = Field(default="smtp.gmail.com", alias="SMTP_HOST")
@@ -36,9 +40,14 @@ class Settings(BaseSettings):
     fastapi_host: str = Field(default="0.0.0.0", alias="FASTAPI_HOST")
     fastapi_port: int = Field(default=8000, alias="FASTAPI_PORT")
     streamlit_port: int = Field(default=8501, alias="STREAMLIT_PORT")
+    # Optional: Streamlit and other frontends use this to reach the API (e.g. docker host name).
+    public_api_url: str = Field(default="http://127.0.0.1:8000", alias="PUBLIC_API_URL")
+    # Comma-separated extra CORS origins (e.g. https://xxx.streamlit.app)
+    cors_extra_origins: str = Field(default="", alias="CORS_EXTRA_ORIGINS")
 
-    llm_model: str = "gpt-4o-mini"
-    llm_temperature: float = 0.2
+    # Groq model id — see https://console.groq.com/docs/models
+    llm_model: str = Field(default="llama-3.3-70b-versatile", alias="LLM_MODEL")
+    llm_temperature: float = Field(default=0.2, alias="LLM_TEMPERATURE")
 
 
 @lru_cache(maxsize=1)
@@ -53,15 +62,17 @@ def get_settings() -> Settings:
 
 @lru_cache(maxsize=1)
 def get_llm() -> ChatOpenAI:
-    """Create a single ChatOpenAI client shared across modules."""
+    """Chat LLM via Groq (OpenAI-compatible API)."""
 
     settings = get_settings()
-    if not settings.openai_api_key:
-        raise ConfigurationError("OPENAI_API_KEY is missing in environment configuration.")
+    if not settings.groq_api_key:
+        raise ConfigurationError("GROQ_API_KEY is missing in environment configuration.")
 
-    logger.debug("Initializing ChatOpenAI model: {}", settings.llm_model)
+    base = (settings.groq_base_url or DEFAULT_GROQ_BASE_URL).rstrip("/")
+    logger.debug("Initializing Groq ChatOpenAI model: {} @ {}", settings.llm_model, base)
     return ChatOpenAI(
         model=settings.llm_model,
         temperature=settings.llm_temperature,
-        api_key=settings.openai_api_key,
+        api_key=settings.groq_api_key,
+        base_url=base,
     )

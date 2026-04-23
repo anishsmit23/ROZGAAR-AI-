@@ -1,9 +1,8 @@
 # Core
 langchain==0.3.25
-langchain-openai==0.3.16
+langchain-openai==0.3.8
 langgraph<=0.3.31
 langgraph-checkpoint-sqlite<=3.0.3
-openai==1.75.0
 
 # Memory
 chromadb==0.5.15

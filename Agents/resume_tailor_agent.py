@@ -1,4 +1,18 @@
+"""Resume tailoring agent: PDF or pasted text in, tailored bullets + PDF out."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from config import settings as app_settings
+from config.prompts import RESUME_TAILOR_PROMPT
+from tools.file_io_tool import write_text
+from tools.pdf_tool import extract_pdf_text, generate_resume_pdf
+
+
 def run_resume_tailor_agent(state: dict) -> dict:
+    """Tailor base resume to the job with optional judge feedback on retry."""
+
     settings = app_settings.get_settings()
     base_resume_path = settings.base_resume_path
     job_description = state.get("job_description", "")
@@ -9,7 +23,13 @@ def run_resume_tailor_agent(state: dict) -> dict:
         else state.get("base_resume", "")
     )
 
-    # ← NEW: inject judge feedback if this is a retry
+    if not (source_text or "").strip():
+        state["tailored_resume_text"] = (
+            "Error: No base resume found. Set BASE_RESUME_PATH to a valid PDF, "
+            "or paste your resume in the 'Base resume' field."
+        )
+        return state
+
     judge_feedback = state.get("judge_feedback", [])
     feedback_block = ""
     if judge_feedback:
@@ -31,6 +51,7 @@ def run_resume_tailor_agent(state: dict) -> dict:
     tailored_text = str(response.content).strip()
 
     out_dir = Path("data/outputs")
+    out_dir.mkdir(parents=True, exist_ok=True)
     txt_path = write_text(out_dir / "tailored_resume.txt", tailored_text)
     pdf_path = generate_resume_pdf(
         output_path=out_dir / "tailored_resume.pdf",

@@ -1,9 +1,6 @@
 # Autonomous AI Job Search Agent
 
-
-UNDER CONSTRUCTION 🚧 
-
-Production-minded scaffold for a multi-agent job search system using LangGraph, FastAPI, Streamlit, ChromaDB, and SQLite.
+Multi-agent job search and application helper using LangGraph, FastAPI, Streamlit, ChromaDB, and SQLite.
 
 ## Features
 
@@ -28,7 +25,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-4. Run both backend and dashboard:
+4. **Option A — API + UI together**
 
 ```bash
 python main.py
@@ -36,6 +33,14 @@ python main.py
 
 - FastAPI: http://localhost:8000
 - Streamlit: http://localhost:8501
+
+5. **Option B — Streamlit only** (no FastAPI; agents run in the Streamlit process)
+
+```bash
+streamlit run dashboard/app.py
+```
+
+Set `GROQ_API_KEY` and `SERPAPI_KEY` (for job search) in `.env` or the environment. To point the UI at a separate API instead, set `ROZGAAR_USE_API=1` and `ROZGAAR_API_URL` (or `PUBLIC_API_URL`).
 
 ## API Endpoints
 

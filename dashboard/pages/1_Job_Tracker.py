@@ -23,4 +23,4 @@ render_metrics(total_jobs=len(rows), applied=applied_count, interviews=interview
 if rows:
     st.dataframe(rows, use_container_width=True)
 else:
-    st.info("No jobs tracked yet. Search jobs from the main page first.")
+    st.info("No jobs tracked yet. Open **Job Search** in the sidebar, run a query, and results will show here.")

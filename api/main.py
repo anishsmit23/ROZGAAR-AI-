@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from typing import Any
 
@@ -13,15 +12,26 @@ from api.routes.email import router as email_router
 from api.routes.interview import router as interview_router
 from api.routes.jobs import router as jobs_router
 from api.routes.resume import router as resume_router
+from config.settings import get_settings
 
 app = FastAPI(title="Autonomous AI Job Search Agent", version="0.2.0")
 
-# ← NEW: allow Streamlit (port 8501) and any future frontend to call the API
+_settings = get_settings()
+_cors_origins = list(
+    {
+        "http://localhost:8501",
+        "http://127.0.0.1:8501",
+        "http://localhost:3000",
+    }
+    | {o.strip() for o in _settings.cors_extra_origins.split(",") if o.strip()}
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8501", "http://localhost:3000"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 
 app.include_router(jobs_router)
@@ -48,7 +58,8 @@ async def health() -> dict[str, str]:
 # ← NEW: generic async workflow launcher
 @app.post("/run-workflow")
 async def run_workflow(payload: dict, background_tasks: BackgroundTasks, request: Request) -> dict:
-    workflow_id = request.state.session_token
+    # Stable id for this run — do not use session_token (a new id per request if header missing).
+    workflow_id = str(uuid.uuid4())
     _workflows[workflow_id] = {"status": "running", "result": None, "error": None}
 
     from Agents.orchestrator import run_orchestrator
@@ -110,8 +121,8 @@ async def get_listings() -> dict:
     settings = get_settings()
     vector_store = VectorStore(settings.chroma_path)
     
-    result = vector_store.jobs_seen.get()
-    ids = result.get("ids", [])
+    result = vector_store.jobs_seen.get(limit=500, include=["documents", "metadatas"])
+    ids = result.get("ids", []) or []
     docs = result.get("documents", [])
     metadatas = result.get("metadatas", [])
     
