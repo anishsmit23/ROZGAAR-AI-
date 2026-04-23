@@ -17,6 +17,13 @@ def test_orchestrator_interview_prep_smoke(monkeypatch):
 
     monkeypatch.setattr("config.settings.get_llm", lambda: FakeLLM())
 
+    class FakeVectorStore:
+        def __init__(self, *args, **kwargs): pass
+        def search_jobs(self, *args, **kwargs): return []
+        def add_application(self, *args, **kwargs): pass
+    
+    monkeypatch.setattr("Agents.interview_prep_agent.VectorStore", FakeVectorStore)
+
     result = run_orchestrator(
         {
             "task": "interview_prep",

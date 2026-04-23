@@ -6,7 +6,7 @@ import asyncio
 import uuid
 from typing import Any
 
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.email import router as email_router
@@ -32,6 +32,13 @@ app.include_router(interview_router)
 # ← NEW: in-memory workflow registry (swap for Redis in production)
 _workflows: dict[str, dict[str, Any]] = {}
 
+@app.middleware("http")
+async def session_middleware(request: Request, call_next):
+    session_token = request.headers.get("session_token", str(uuid.uuid4()))
+    request.state.session_token = session_token
+    response = await call_next(request)
+    return response
+
 
 @app.get("/health")
 async def health() -> dict[str, str]:
@@ -40,15 +47,15 @@ async def health() -> dict[str, str]:
 
 # ← NEW: generic async workflow launcher
 @app.post("/run-workflow")
-async def run_workflow(payload: dict, background_tasks: BackgroundTasks) -> dict:
-    workflow_id = str(uuid.uuid4())
+async def run_workflow(payload: dict, background_tasks: BackgroundTasks, request: Request) -> dict:
+    workflow_id = request.state.session_token
     _workflows[workflow_id] = {"status": "running", "result": None, "error": None}
 
     from Agents.orchestrator import run_orchestrator
 
     def _run():
         try:
-            result = run_orchestrator(payload)
+            result = run_orchestrator(payload, thread_id=workflow_id)
             _workflows[workflow_id]["result"] = result
             _workflows[workflow_id]["status"] = "done"
         except Exception as exc:
@@ -62,19 +69,60 @@ async def run_workflow(payload: dict, background_tasks: BackgroundTasks) -> dict
 # ← NEW: status polling endpoint
 @app.get("/status/{workflow_id}")
 async def get_status(workflow_id: str) -> dict:
-    entry = _workflows.get(workflow_id)
-    if not entry:
-        return {"status": "not_found"}
-    return {"workflow_id": workflow_id, "status": entry["status"]}
+    from Agents.orchestrator import _COMPILED_GRAPH
+    config = {"configurable": {"thread_id": workflow_id}}
+    state_tuple = _COMPILED_GRAPH.get_state(config)
+    
+    current_node = state_tuple.next[0] if state_tuple.next else None
+    state_snapshot = state_tuple.values
+    
+    entry = _workflows.get(workflow_id, {"status": "unknown"})
+    
+    return {
+        "workflow_id": workflow_id,
+        "status": entry.get("status", "unknown"),
+        "current_node": current_node,
+        "state_snapshot": state_snapshot,
+        "progress_pct": 100 if entry.get("status") == "done" else 50
+    }
 
 
 # ← NEW: result fetch endpoint
 @app.get("/results/{workflow_id}")
 async def get_results(workflow_id: str) -> dict:
-    entry = _workflows.get(workflow_id)
-    if not entry:
-        return {"status": "not_found"}
-    return {"workflow_id": workflow_id, **entry}
+    from Agents.orchestrator import _COMPILED_GRAPH
+    config = {"configurable": {"thread_id": workflow_id}}
+    state_tuple = _COMPILED_GRAPH.get_state(config)
+    
+    entry = _workflows.get(workflow_id, {})
+    return {
+        "workflow_id": workflow_id,
+        "status": entry.get("status", "unknown"),
+        "error": entry.get("error"),
+        "result": state_tuple.values if state_tuple.values else entry.get("result")
+    }
+
+@app.get("/listings")
+async def get_listings() -> dict:
+    """Queries ChromaDB and returns matching job listings as JSON."""
+    from config.settings import get_settings
+    from memory.vector_store import VectorStore
+    settings = get_settings()
+    vector_store = VectorStore(settings.chroma_path)
+    
+    result = vector_store.jobs_seen.get()
+    ids = result.get("ids", [])
+    docs = result.get("documents", [])
+    metadatas = result.get("metadatas", [])
+    
+    jobs = []
+    for i in range(len(ids)):
+        jobs.append({
+            "job_id": ids[i],
+            "description": docs[i] if docs else "",
+            "metadata": metadatas[i] if metadatas else {}
+        })
+    return {"listings": jobs}
 
 
 # ← NEW: analytics endpoint for Streamlit training dashboard
