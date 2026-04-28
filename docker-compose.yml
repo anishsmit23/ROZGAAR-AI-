@@ -1,16 +1,104 @@
 version: "3.9"
 
 services:
-  app:
+  postgres:
+    image: postgres:16
+    container_name: rozgaar-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rozgaar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rozgaar}
+      POSTGRES_DB: ${POSTGRES_DB:-rozgaar}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: rozgaar-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  chroma:
+    image: chromadb/chroma:0.5.15
+    container_name: rozgaar-chroma
+    command: ["chroma", "run", "--host", "0.0.0.0", "--port", "8000", "--path", "/chroma"]
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2024-10-13T13-24-02Z
+    container_name: rozgaar-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: job-search-agent
+    container_name: rozgaar-api
     env_file:
       - .env
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "8000:8000"
+    volumes:
+      - ./:/app
+    depends_on:
+      - postgres
+      - redis
+      - chroma
+      - minio
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rozgaar-worker
+    env_file:
+      - .env
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info", "-Q", "agents,scrapers"]
+    volumes:
+      - ./:/app
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rozgaar-ui
+    env_file:
+      - .env
+    command: ["streamlit", "run", "ui/streamlit_app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+    ports:
       - "8501:8501"
     volumes:
       - ./:/app
+    depends_on:
+      - api
     restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  chroma_data:
+  minio_data:

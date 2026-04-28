@@ -2,16 +2,29 @@
 langchain==0.3.25
 langchain-openai==0.3.8
 langgraph<=0.3.31
-langgraph-checkpoint-sqlite<=3.0.3
+langgraph-checkpoint-postgres==1.0.6
+
+# Data + Auth
+sqlalchemy==2.0.35
+asyncpg==0.29.0
+alembic==1.13.2
+fastapi-users[sqlalchemy]==13.0.0
+python-jose==3.3.0
+cryptography==43.0.1
+python-multipart==0.0.9
 
 # Memory
 chromadb==0.5.15
-sqlalchemy==2.0.35
+
+# Cache + Queue
+redis==5.0.8
+celery==5.4.0
 
 # Tools
 serpapi==0.1.5
 pymupdf==1.24.10
 reportlab==4.2.2
+minio==7.2.9
 
 # API
 fastapi==0.115.0

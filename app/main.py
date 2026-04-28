@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.v1.router import router as api_router
+from app.auth.schemas import UserCreate, UserRead
+from app.auth.users import auth_backend, fastapi_users
+from app.config import get_settings
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(title="Rozgaar AI Job Agent", version="1.0.0")
+
+    cors_origins = list(
+        {
+            "http://localhost:8501",
+            "http://127.0.0.1:8501",
+            settings.public_api_url,
+        }
+        | {o.strip() for o in settings.cors_extra_origins.split(",") if o.strip()}
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        allow_credentials=True,
+    )
+
+    app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+    app.include_router(
+        fastapi_users.get_auth_router(auth_backend),
+        prefix=f"{settings.api_v1_prefix}/auth/jwt",
+        tags=["auth"],
+    )
+    app.include_router(
+        fastapi_users.get_register_router(UserRead, UserCreate),
+        prefix=f"{settings.api_v1_prefix}/auth",
+        tags=["auth"],
+    )
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    return app
+
+
+app = create_app()

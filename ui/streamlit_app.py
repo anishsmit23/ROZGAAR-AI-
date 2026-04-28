@@ -1,0 +1,19 @@
+from __future__ import annotations
+
+import os
+
+import streamlit as st
+import httpx
+
+PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "http://127.0.0.1:8000")
+
+st.set_page_config(page_title="Rozgaar AI", layout="wide")
+
+st.title("Rozgaar AI Job Agent")
+
+if st.button("Check API health"):
+    try:
+        response = httpx.get(f"{PUBLIC_API_URL}/health", timeout=5)
+        st.success(response.json())
+    except Exception as exc:
+        st.error(str(exc))
