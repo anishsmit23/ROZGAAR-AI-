@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from app.db.base import async_session
 from app.db.models.agent_event import AgentEvent
 from app.db.models.agent_run import AgentRun
+from app.db.models.application import Application, ApplicationState
 from app.tasks.celery_app import celery_app
 
 
@@ -33,6 +34,15 @@ async def _log_event(run_id: str, user_id: str, step_name: str, payload: dict | 
         await session.commit()
 
 
+async def _set_application_state(application_id: str, state: ApplicationState) -> None:
+    async with async_session() as session:
+        application = await session.get(Application, uuid.UUID(application_id))
+        if not application:
+            return
+        application.state = state
+        await session.commit()
+
+
 @celery_app.task(bind=True, max_retries=3, queue="agents")
 def run_job_search(self, user_id: str, query_params: dict, run_id: str) -> dict:
     async def _run() -> dict:
@@ -52,6 +62,7 @@ def run_resume_tailor(self, user_id: str, application_id: str, run_id: str) -> d
         await _set_run_status(run_id, "running")
         await _log_event(run_id, user_id, "tailor_started", {"application_id": application_id})
         await _log_event(run_id, user_id, "tailor_completed", {"application_id": application_id})
+        await _set_application_state(application_id, ApplicationState.TAILORED)
         await _set_run_status(run_id, "completed", {"application_id": application_id})
         output = {"application_id": application_id}
         return output
@@ -65,6 +76,7 @@ def run_email_generation(self, user_id: str, application_id: str, run_id: str) -
         await _set_run_status(run_id, "running")
         await _log_event(run_id, user_id, "email_started", {"application_id": application_id})
         await _log_event(run_id, user_id, "email_completed", {"application_id": application_id})
+        await _set_application_state(application_id, ApplicationState.EMAIL_DRAFT)
         await _set_run_status(run_id, "completed", {"application_id": application_id})
         output = {"application_id": application_id}
         return output

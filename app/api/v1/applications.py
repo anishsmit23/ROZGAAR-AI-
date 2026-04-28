@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 
@@ -17,7 +19,7 @@ router = APIRouter()
 
 @router.post("/applications/{job_id}/tailor", response_model=ApplicationCreateResponse)
 async def tailor_resume(
-    job_id: str,
+    job_id: UUID,
     user: User = Depends(get_current_user),
 ) -> ApplicationCreateResponse:
     async with async_session() as session:
@@ -57,7 +59,7 @@ async def tailor_resume(
 
 @router.post("/applications/{application_id}/generate-email", response_model=ApplicationCreateResponse)
 async def generate_email(
-    application_id: str,
+    application_id: UUID,
     user: User = Depends(get_current_user),
 ) -> ApplicationCreateResponse:
     async with async_session() as session:
@@ -70,14 +72,14 @@ async def generate_email(
         run = AgentRun(
             user_id=user.id,
             graph_name="EmailGenerationGraph",
-            input_snapshot={"application_id": application_id},
+            input_snapshot={"application_id": str(application_id)},
             status="queued",
         )
         session.add(run)
         await session.commit()
         await session.refresh(run)
 
-    task_result = run_email_generation.delay(str(user.id), application_id, str(run.id))
+    task_result = run_email_generation.delay(str(user.id), str(application_id), str(run.id))
 
     async with async_session() as session:
         run = await session.get(AgentRun, run.id)
@@ -85,7 +87,7 @@ async def generate_email(
             run.task_id = task_result.id
             await session.commit()
 
-    return ApplicationCreateResponse(application_id=application_id, task_id=task_result.id)
+    return ApplicationCreateResponse(application_id=str(application_id), task_id=task_result.id)
 
 
 @router.get("/applications", response_model=list[ApplicationRead])

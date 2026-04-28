@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from app.db.base import async_session
 from app.db.models.agent_run import AgentRun
 from app.db.models.user import User

@@ -22,8 +22,8 @@ async def get_user_db() -> AsyncGenerator[SQLAlchemyUserDatabase, None]:
 
 
 class UserManager(BaseUserManager[User, UUID]):
-    reset_password_token_secret = "reset-password-secret"
-    verification_token_secret = "verification-secret"
+    reset_password_token_secret = settings.reset_password_secret
+    verification_token_secret = settings.verification_secret
 
 
 async def get_user_manager(user_db=Depends(get_user_db)) -> AsyncGenerator[UserManager, None]:
